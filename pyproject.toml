@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deep-research-agent"
+version = "0.1.0"
+description = "A CLI-first research agent built with LangChain Deep Agents"
+requires-python = ">=3.11"
+dependencies = [
+  "deepagents>=0.3,<1",
+  "langchain-openai>=0.3,<2",
+  "tavily-python>=0.7,<1",
+]
+
+[project.scripts]
+deep-research = "deep_research_agent.cli:entrypoint"
+
+[tool.setuptools.packages.find]
+where = ["src"]
