@@ -138,15 +138,6 @@ Run the test suite with the Python standard library:
 python -m unittest discover -s tests
 ```
 
-Run the deterministic MVP acceptance scenarios separately:
-
-```bash
-python -m unittest discover -s tests -p 'test_acceptance.py' -v
-```
-
-The quality rubric, readiness gates, and reproducible thresholds are documented in
-[`docs/acceptance.md`](docs/acceptance.md).
-
 Run the opt-in live smoke test only after configuring all provider variables:
 
 ```bash
