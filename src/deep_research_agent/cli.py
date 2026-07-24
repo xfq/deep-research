@@ -42,7 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
             "DEEP_RESEARCH_MODEL."
         ),
     )
-    parser.add_argument("question", help="The Research Question to investigate.")
+    parser.add_argument(
+        "question",
+        nargs="?",
+        help="The Research Question to investigate.",
+    )
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -64,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=120,
         help="Maximum elapsed research time in seconds.",
     )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Interactively configure API keys and write a .env file.",
+    )
     return parser
 
 
@@ -73,7 +82,10 @@ def main(
     research_engine: ResearchEngine | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
-    if not args.question.strip():
+    if args.setup:
+        _interactive_setup()
+        return 0
+    if not args.question or not args.question.strip():
         print("error: Research Question must not be blank", file=sys.stderr)
         return 2
 
@@ -173,6 +185,51 @@ def main(
 
 def entrypoint() -> None:
     raise SystemExit(main())
+
+
+def _interactive_setup() -> None:
+    """Prompt for API keys and write a ``.env`` file in the current directory."""
+    from os import chmod
+    from stat import S_IRUSR, S_IWUSR
+
+    env_path = Path(".env")
+    if env_path.exists():
+        print(f"{env_path} already exists. Remove it first or use a different directory.")
+        return
+
+    print("Deep Research Agent — interactive setup\n")
+    print("Press Enter to skip optional settings.\n")
+
+    openai_key = input("OPENAI_API_KEY: ").strip()
+    tavily_key = input("TAVILY_API_KEY: ").strip()
+
+    if not openai_key or not tavily_key:
+        print(
+            "error: OPENAI_API_KEY and TAVILY_API_KEY are required for live research.",
+            file=sys.stderr,
+        )
+        return
+
+    lines = [
+        "# Deep Research Agent configuration",
+        f'OPENAI_API_KEY="{openai_key}"',
+        f'TAVILY_API_KEY="{tavily_key}"',
+    ]
+
+    base_url = input("OPENAI_BASE_URL (optional): ").strip()
+    if base_url:
+        lines.append(f'OPENAI_BASE_URL="{base_url}"')
+
+    reasoning = input("OPENAI_REASONING_EFFORT [none]: ").strip()
+    lines.append(f'OPENAI_REASONING_EFFORT="{reasoning or "none"}"')
+
+    model = input("DEEP_RESEARCH_MODEL [gpt-5.6-sol]: ").strip()
+    if model:
+        lines.append(f'DEEP_RESEARCH_MODEL="{model}"')
+
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    chmod(env_path, S_IRUSR | S_IWUSR)
+    print(f"\nConfiguration written to {env_path}")
 
 
 def _write_output_files(output_directory: Path, files: dict[str, str]) -> None:

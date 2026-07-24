@@ -3,6 +3,7 @@ from enum import StrEnum
 from ipaddress import ip_address
 import json
 from os import environ
+from pathlib import Path
 import re
 from time import monotonic
 from typing import Callable, Protocol
@@ -12,6 +13,34 @@ from urllib.parse import urlsplit, urlunsplit
 MAX_SOURCE_BYTES = 1_000_000
 MAX_MODEL_CHARACTERS = 100_000
 MAX_SEARCH_QUERY_CHARACTERS = 400
+
+
+def _load_dotenv() -> None:
+    """Load ``.env`` from the current directory and ``~/.deep-research/.env``.
+
+    Variables already present in the environment are never overwritten.
+    Project-local ``.env`` is loaded first, so it takes precedence over the
+    global fallback file.
+    """
+    if environ.get("DEEP_RESEARCH_SKIP_DOTENV"):
+        return
+    paths = [Path(".env"), Path.home() / ".deep-research" / ".env"]
+    for path in paths:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            if not key or key in environ:
+                continue
+            value = value.strip().strip("'\"")
+            environ[key] = value
+
+
+_load_dotenv()
 
 
 @dataclass(frozen=True)

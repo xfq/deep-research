@@ -24,7 +24,19 @@ python -m pip install -e .
 
 ### 配置API访问
 
-在当前终端会话中设置凭据。请将占位符替换为你自己的值：
+**推荐方式：使用 `.env` 文件**（一次配置，跨会话生效）：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 填入你自己的值，或运行交互式配置：
+
+```bash
+deep-research --setup
+```
+
+**备选方式：在当前终端会话中导出**（仅影响当前会话）：
 
 ```bash
 export OPENAI_API_KEY="your-openai-compatible-api-key"
@@ -59,7 +71,7 @@ test -n "$TAVILY_API_KEY" && echo "TAVILY_API_KEY configured"
 从命令行运行研究问题：
 
 ```bash
-deep-research "What is W3C?"
+deep-research "W3C是什么？"
 ```
 
 默认情况下，命令会将四个文件写入 `research-output/`：

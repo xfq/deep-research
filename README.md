@@ -24,7 +24,19 @@ python -m pip install -e .
 
 ### Configure API access
 
-Set credentials in the current terminal session. Replace the placeholders with your own values:
+**Recommended: use a `.env` file** (configure once, works across sessions):
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your own values, or run the interactive setup:
+
+```bash
+deep-research --setup
+```
+
+**Alternative: export in the current terminal session** (affects only this session):
 
 ```bash
 export OPENAI_API_KEY="your-openai-compatible-api-key"

@@ -286,11 +286,11 @@ class CliTests(unittest.TestCase):
     def test_missing_research_question_has_actionable_cli_error(self) -> None:
         stderr = StringIO()
 
-        with redirect_stderr(stderr), self.assertRaises(SystemExit) as raised:
-            main([])
+        with redirect_stderr(stderr):
+            exit_code = main([])
 
-        self.assertEqual(raised.exception.code, 2)
-        self.assertIn("the following arguments are required: question", stderr.getvalue())
+        self.assertEqual(exit_code, 2)
+        self.assertIn("Research Question must not be blank", stderr.getvalue())
 
     def test_live_research_requires_provider_credentials_before_writing_output(self) -> None:
         stderr = StringIO()
