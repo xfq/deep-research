@@ -2,6 +2,7 @@ import argparse
 import json
 import math
 import sys
+import webbrowser
 from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
@@ -67,6 +68,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=positive_float,
         default=120,
         help="Maximum elapsed research time in seconds.",
+    )
+    parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open report.html in the browser after generation.",
     )
     parser.add_argument(
         "--setup",
@@ -140,6 +146,7 @@ def main(
             )
         except OSError:
             pass
+        _maybe_open_report(args, args.output_dir / "report.html")
         return 1
 
     try:
@@ -173,6 +180,7 @@ def main(
         return 1
 
     report_path = args.output_dir / "report.html"
+    _maybe_open_report(args, report_path)
     if result.outcome == ResearchOutcome.COMPLETE:
         print(f"Research complete: {report_path}")
         return 0
@@ -230,6 +238,13 @@ def _interactive_setup() -> None:
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     chmod(env_path, S_IRUSR | S_IWUSR)
     print(f"\nConfiguration written to {env_path}")
+
+
+def _maybe_open_report(args: argparse.Namespace, report_path: Path) -> None:
+    """Open *report_path* in the browser unless ``--no-open`` or running non-interactively."""
+    if args.no_open or not sys.stdout.isatty():
+        return
+    webbrowser.open(f"file://{report_path.resolve()}")
 
 
 def _write_output_files(output_directory: Path, files: dict[str, str]) -> None:
