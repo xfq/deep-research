@@ -1,12 +1,14 @@
 # Deep Research Agent
 
-A CLI-first research agent that turns a Research Question into a readable HTML Research Report, a Markdown source report, and structured Source metadata.
+[简体中文](README.zh-Hans.md)
 
-The current implementation uses LangChain Deep Agents with an OpenAI-compatible model API and Tavily for public-web search and Source extraction.
+A CLI research agent that turns a Research Question into an HTML Research Report, a Markdown source report, and structured Source metadata.
+
+The current implementation uses LangChain Deep Agents with an OpenAI-compatible model API and Tavily for web search and Source extraction.
 
 ## Requirements
 
-- Python 3.11 or later
+Python 3.11 or later
 
 ## Installation
 
@@ -50,7 +52,7 @@ test -n "$OPENAI_REASONING_EFFORT" && echo "OPENAI_REASONING_EFFORT configured"
 test -n "$TAVILY_API_KEY" && echo "TAVILY_API_KEY configured"
 ```
 
-These `export` commands affect only the current terminal session. Do not put API keys in source code, commit them to Git, or paste them into issue reports.
+These `export` commands affect only the current terminal session.
 
 ### Run research
 
@@ -63,7 +65,7 @@ deep-research "What is W3C?"
 By default, the command writes four files to `research-output/`:
 
 - `report.html`: the primary HTML Research Report
-- `report.md`: the same report as portable Markdown source
+- `report.md`: the same report as Markdown source
 - `sources.json`: structured metadata for the Sources used by the report
 - `diagnostics.jsonl`: structured stage, budget, failure, and termination events
 
