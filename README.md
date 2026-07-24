@@ -4,7 +4,7 @@
 
 A CLI research agent that turns a Research Question into an HTML Research Report, a Markdown source report, and structured Source metadata.
 
-The current implementation uses LangChain Deep Agents with an OpenAI-compatible model API and Tavily for web search and Source extraction.
+The current implementation uses LangChain Deep Agents with an OpenAI-compatible model API and [Tavily](https://www.tavily.com/) for web search and Source extraction.
 
 ## Requirements
 

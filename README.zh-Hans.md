@@ -4,7 +4,7 @@
 
 一个CLI版的研究智能体，将研究问题转化为HTML版的研究报告、Markdown源报告和结构化的Source元数据。
 
-当前实现使用LangChain Deep Agents，搭配OpenAI兼容模型API和Tavily进行网络搜索与Source提取。
+当前实现使用LangChain Deep Agents，搭配OpenAI兼容模型API和[Tavily](https://www.tavily.com/)进行网络搜索与Source提取。
 
 ## 环境要求
 
