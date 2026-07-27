@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from deep_research_agent.cli import main
 from deep_research_agent.research import (
+    Evidence,
     PlannedResearchEngine,
     NoUsefulSources,
     ResearchBudget,
@@ -49,7 +50,9 @@ class DeterministicModel:
     def summarize(self, question: str, source: Source, content: str) -> str:
         return content
 
-    def synthesize(self, question: str, evidence) -> str:
+    def synthesize(
+        self, question: str, evidence: tuple[Evidence, ...]
+    ) -> ResearchSynthesis | str:
         return " ".join(
             f"{item.summary} [{index}]" for index, item in enumerate(evidence, 1)
         )
@@ -289,7 +292,9 @@ class UncertainEvidenceTests(CliResearchTestCase):
 
     def test_cli_surfaces_conflicting_evidence_separately_from_the_answer(self) -> None:
         class ConflictingModel(DeterministicModel):
-            def synthesize(self, question: str, evidence) -> ResearchSynthesis:
+            def synthesize(
+                self, question: str, evidence: tuple[Evidence, ...]
+            ) -> ResearchSynthesis:
                 return ResearchSynthesis(
                     answer="The Sources disagree about the measured value [1] [2].",
                     conflicts=(

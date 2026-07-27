@@ -642,7 +642,7 @@ class DeepAgentResearchPlanner:
         agent = create_deep_agent(
             model=ChatOpenAI(
                 model=self.model_name,
-                api_key=self.api_key,
+                api_key=lambda: self.api_key,
                 base_url=self.base_url,
                 reasoning_effort=self.reasoning_effort,
             ),
@@ -791,7 +791,7 @@ class DeepAgentReportModel:
 
         chat_model = ChatOpenAI(
             model=self.model_name,
-            api_key=self.api_key,
+            api_key=lambda: self.api_key,
             base_url=self.base_url,
             reasoning_effort=self.reasoning_effort,
         )
@@ -836,7 +836,7 @@ class DeepAgentReportModel:
         agent = create_deep_agent(
             model=ChatOpenAI(
                 model=self.model_name,
-                api_key=self.api_key,
+                api_key=lambda: self.api_key,
                 base_url=self.base_url,
                 reasoning_effort=self.reasoning_effort,
             ),
@@ -900,15 +900,27 @@ class DeepAgentReportModel:
 def build_live_research_engine() -> PlannedResearchEngine:
     openai_api_key = environ.get("OPENAI_API_KEY")
     tavily_api_key = environ.get("TAVILY_API_KEY")
-    missing = [
-        name
-        for name, value in (
-            ("OPENAI_API_KEY", openai_api_key),
-            ("TAVILY_API_KEY", tavily_api_key),
+    if openai_api_key is None or tavily_api_key is None:
+        missing = [
+            name
+            for name, value in (
+                ("OPENAI_API_KEY", openai_api_key),
+                ("TAVILY_API_KEY", tavily_api_key),
+            )
+            if not value or not value.strip()
+        ]
+        raise ConfigurationError(
+            f"missing required configuration: {', '.join(missing)}"
         )
-        if not value or not value.strip()
-    ]
-    if missing:
+    if not openai_api_key.strip() or not tavily_api_key.strip():
+        missing = [
+            name
+            for name, value in (
+                ("OPENAI_API_KEY", openai_api_key),
+                ("TAVILY_API_KEY", tavily_api_key),
+            )
+            if not value.strip()
+        ]
         raise ConfigurationError(
             f"missing required configuration: {', '.join(missing)}"
         )

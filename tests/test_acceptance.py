@@ -33,10 +33,10 @@ class ScenarioSearch:
     def __init__(self):
         self.calls = 0
 
-    def search(self, investigation):
+    def search(self, question: str) -> Source:
         self.calls += 1
         return Source(
-            title=investigation,
+            title=question,
             url=f"https://evidence.example/{self.calls}",
         )
 
@@ -138,10 +138,14 @@ class AcceptanceTests(unittest.TestCase):
         self.assertLessEqual(result["search_calls"], 3)
         self.assertLessEqual(result["read_calls"], 3)
         self.assertEqual(result["events"][-1]["event"], "research_finished")
-        outcome = re.search(r"## Outcome\n\n([^\n]+)", result["report"]).group(1)
-        termination = re.search(
+        outcome_match = re.search(r"## Outcome\n\n([^\n]+)", result["report"])
+        termination_match = re.search(
             r"## Termination Reason\n\n([^\n]+)", result["report"]
-        ).group(1)
+        )
+        if outcome_match is None or termination_match is None:
+            raise AssertionError("Research Report is missing outcome metadata")
+        outcome = outcome_match.group(1)
+        termination = termination_match.group(1)
         self.assertEqual(
             result["events"][-1]["detail"], f"{outcome}: {termination}"
         )

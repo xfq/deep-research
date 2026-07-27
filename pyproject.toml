@@ -18,3 +18,9 @@ deep-research = "deep_research_agent.cli:entrypoint"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+venv = ".venv"
+venvPath = "."

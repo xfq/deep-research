@@ -32,6 +32,12 @@ class DeterministicModel:
     def summarize(self, question: str, source: Source, content: str) -> str:
         return content
 
+    def synthesize(
+        self, question: str, evidence: tuple[Evidence, ...]
+    ) -> str:
+        """Return a stable synthesis for tests that require the full model protocol."""
+        return " ".join(item.summary for item in evidence)
+
 
 class DeterministicSearch:
     def search(self, question: str) -> Source:
@@ -330,8 +336,10 @@ class CliTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             engine = build_live_research_engine()
 
-        self.assertIsInstance(engine.model, DeepAgentReportModel)
-        self.assertEqual(engine.model.base_url, "https://llm.example.com/v1")
+        model = engine.model
+        if not isinstance(model, DeepAgentReportModel):
+            raise AssertionError("Live engine did not use DeepAgentReportModel")
+        self.assertEqual(model.base_url, "https://llm.example.com/v1")
 
     def test_invalid_live_configuration_identifies_setting_without_secret(self) -> None:
         secret = "secret-openai-key"
@@ -381,8 +389,10 @@ class CliTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             engine = build_live_research_engine()
 
-        self.assertIsInstance(engine.model, DeepAgentReportModel)
-        self.assertEqual(engine.model.reasoning_effort, "none")
+        model = engine.model
+        if not isinstance(model, DeepAgentReportModel):
+            raise AssertionError("Live engine did not use DeepAgentReportModel")
+        self.assertEqual(model.reasoning_effort, "none")
 
     def test_reasoning_effort_override_is_forwarded_to_chat_model(self) -> None:
         captured_options = {}
@@ -396,9 +406,9 @@ class CliTests(unittest.TestCase):
                 return {"messages": [types.SimpleNamespace(content="Finding")]}
 
         fake_deepagents = types.ModuleType("deepagents")
-        fake_deepagents.create_deep_agent = lambda **options: FakeAgent()
+        setattr(fake_deepagents, "create_deep_agent", lambda **options: FakeAgent())
         fake_langchain_openai = types.ModuleType("langchain_openai")
-        fake_langchain_openai.ChatOpenAI = FakeChatOpenAI
+        setattr(fake_langchain_openai, "ChatOpenAI", FakeChatOpenAI)
         environment = {
             "OPENAI_API_KEY": "test-openai-key",
             "OPENAI_REASONING_EFFORT": "low",
@@ -507,9 +517,9 @@ class CliTests(unittest.TestCase):
                 }
 
         fake_deepagents = types.ModuleType("deepagents")
-        fake_deepagents.create_deep_agent = lambda **options: FakeAgent()
+        setattr(fake_deepagents, "create_deep_agent", lambda **options: FakeAgent())
         fake_langchain_openai = types.ModuleType("langchain_openai")
-        fake_langchain_openai.ChatOpenAI = FakeChatOpenAI
+        setattr(fake_langchain_openai, "ChatOpenAI", FakeChatOpenAI)
         model = DeepAgentReportModel(model_name="test", api_key="test")
 
         with patch.dict(
@@ -565,11 +575,13 @@ class CliTests(unittest.TestCase):
                 }
 
         fake_tavily = types.ModuleType("tavily")
-        fake_tavily.TavilyClient = FakeTavilyClient
+        setattr(fake_tavily, "TavilyClient", FakeTavilyClient)
 
         with patch.dict(sys.modules, {"tavily": fake_tavily}):
             TavilyWebSearch(api_key="test-key").search("x" * 401)
 
+        if captured_query is None:
+            raise AssertionError("Tavily did not receive a search query")
         self.assertEqual(len(captured_query), 400)
 
     def test_web_search_prefers_an_authoritative_source_over_a_generic_result(self) -> None:
@@ -604,7 +616,7 @@ class CliTests(unittest.TestCase):
                 }
 
         fake_tavily = types.ModuleType("tavily")
-        fake_tavily.TavilyClient = FakeTavilyClient
+        setattr(fake_tavily, "TavilyClient", FakeTavilyClient)
 
         with patch.dict(sys.modules, {"tavily": fake_tavily}):
             source = TavilyWebSearch(api_key="test-key").search("Question")
