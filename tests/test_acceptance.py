@@ -95,6 +95,9 @@ class AcceptanceTests(unittest.TestCase):
                 )
             elapsed = time.monotonic() - started_at
             report = (Path(directory) / "report.md").read_text(encoding="utf-8")
+            report_html = (Path(directory) / "report.html").read_text(
+                encoding="utf-8"
+            )
             sources = json.loads(
                 (Path(directory) / "sources.json").read_text(encoding="utf-8")
             )
@@ -107,6 +110,7 @@ class AcceptanceTests(unittest.TestCase):
         return {
             "exit_code": exit_code,
             "report": report,
+            "report_html": report_html,
             "sources": sources,
             "events": events,
             "elapsed": elapsed,
@@ -238,6 +242,83 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(len(result["sources"]), 2)
         self.assert_citation_integrity(result)
         self.assert_common_thresholds(result)
+
+    def test_simplified_chinese_question_produces_simplified_chinese_page(
+        self,
+    ) -> None:
+        """A Simplified Chinese question produces a Simplified Chinese HTML page."""
+        result = self.run_scenario(
+            "什么是网页标准？",
+            ["网页标准的定义", "网页标准的作用"],
+            ResearchSynthesis(
+                answer="网页标准让不同浏览器一致地呈现内容 [1] [2]。"
+            ),
+        )
+
+        html = result["report_html"]
+        self.assertIn('<html lang="zh-Hans">', html)
+        self.assertIn("深度研究报告", html)
+        self.assertIn("完整", html)
+        self.assertIn("2 个来源", html)
+        self.assertIn("目录", html)
+        self.assertIn("<h2>回答</h2>", html)
+        self.assertIn("<h2>来源</h2>", html)
+        self.assertIn("未发现。", html)
+        self.assertNotIn("Deep Research Report", html)
+        self.assertNotIn(">Complete<", html)
+        self.assertNotIn(">Contents<", html)
+        self.assertNotIn("None identified.", html)
+
+    def test_simplified_chinese_partial_page_localizes_system_explanations(
+        self,
+    ) -> None:
+        """Partial-result boilerplate remains Simplified Chinese."""
+
+        class ChineseScenarioReader(ScenarioReader):
+            def read(self, source: Source) -> str:
+                """Return Chinese evidence for the partial-result scenario."""
+                self.calls += 1
+                return f"官方来源说明：{source.title}。"
+
+        result = self.run_scenario(
+            "这个结论有充分证据吗？",
+            ["查找支持该结论的权威来源"],
+            ResearchSynthesis(answer="unused [1]"),
+            reader=ChineseScenarioReader(),
+            budget_arguments=("--max-searches", "1", "--max-source-reads", "1"),
+        )
+
+        html = result["report_html"]
+        self.assertIn("未验证的缺口", html)
+        self.assertIn("现有证据可能不完整", html)
+        self.assertNotIn("Unverified gap", html)
+        self.assertNotIn("Research ended with status", html)
+        self.assertNotIn("Synthesis limitation", html)
+        self.assertNotIn("The available Evidence may be incomplete", html)
+
+    def test_simplified_chinese_page_hides_raw_english_failure_message(
+        self,
+    ) -> None:
+        """Chinese HTML uses a localized failure summary for provider errors."""
+
+        class ChineseFailOnceReader(ScenarioReader):
+            def read(self, source: Source) -> str:
+                """Fail once in English, then return Chinese evidence."""
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("Source temporarily unavailable")
+                return f"官方来源说明：{source.title}。"
+
+        result = self.run_scenario(
+            "剩余来源支持什么结论？",
+            ["不可用来源", "可用来源一", "可用来源二"],
+            ResearchSynthesis(answer="剩余来源支持该结论 [1] [2]。"),
+            reader=ChineseFailOnceReader(),
+        )
+
+        html = result["report_html"]
+        self.assertIn("读取来源 https://evidence.example/1 时失败。", html)
+        self.assertNotIn("Source temporarily unavailable", html)
 
 
 if __name__ == "__main__":

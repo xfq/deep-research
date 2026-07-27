@@ -53,12 +53,19 @@ class ReportHtmlTests(unittest.TestCase):
             termination_reason=TerminationReason.SEARCH_LIMIT,
         )
 
-        self.assertIn('<html lang="zh-CN">', html)
+        self.assertIn('<html lang="zh-Hans">', html)
         self.assertIn("&lt;script&gt;alert(&#x27;x&#x27;)&lt;/script&gt;", html)
         self.assertNotIn("<script>alert", html)
         self.assertIn("Unsafe &lt;title&gt;", html)
         self.assertNotIn('href="javascript:', html)
-        self.assertIn("Partial", html)
+        self.assertIn("部分完成", html)
+        self.assertIn("1 个来源", html)
+        self.assertIn("搜索次数已用尽", html)
+        self.assertIn('aria-label="报告章节"', html)
+        self.assertIn("<h2>回答</h2>", html)
+        self.assertIn("<h2>来源</h2>", html)
+        self.assertNotIn("Deep Research Report", html)
+        self.assertNotIn(">Contents<", html)
 
     def test_keeps_failure_details_visible_when_no_report_body_exists(self) -> None:
         html = render_report_html(
@@ -75,6 +82,25 @@ class ReportHtmlTests(unittest.TestCase):
         self.assertIn("<h2>Report details</h2>", html)
         self.assertIn("Unexpected research execution failure.", html)
         self.assertIn("No usable sources were collected.", html)
+
+    def test_localizes_failure_details_for_simplified_chinese_question(self) -> None:
+        """Failure-page boilerplate follows a Simplified Chinese question."""
+        html = render_report_html(
+            "# Research Report\n\n"
+            "## Research Question\n\n研究为什么失败？\n\n"
+            "## Outcome\n\nfailed\n\n"
+            "## Termination Reason\n\nUnexpected research execution failure.\n",
+            question="研究为什么失败？",
+            sources=(),
+            outcome=ResearchOutcome.FAILED,
+            termination_reason="Unexpected research execution failure.",
+        )
+
+        self.assertIn("<h2>报告详情</h2>", html)
+        self.assertIn("研究执行过程中发生意外错误。", html)
+        self.assertIn("未收集到可用来源。", html)
+        self.assertNotIn("Unexpected research execution failure.", html)
+        self.assertNotIn("No usable sources were collected.", html)
 
 
 if __name__ == "__main__":

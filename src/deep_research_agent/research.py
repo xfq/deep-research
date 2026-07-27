@@ -9,10 +9,19 @@ from time import monotonic
 from typing import Callable, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
+from deep_research_agent.localization import should_use_simplified_chinese
+
 
 MAX_SOURCE_BYTES = 1_000_000
 MAX_MODEL_CHARACTERS = 100_000
 MAX_SEARCH_QUERY_CHARACTERS = 400
+
+
+def _response_language_instruction(question: str) -> str:
+    """Return a Simplified Chinese model-output instruction when needed."""
+    if should_use_simplified_chinese(question):
+        return " Write all natural-language output in Simplified Chinese."
+    return ""
 
 
 def _load_dotenv() -> None:
@@ -225,8 +234,12 @@ class PlannedResearchEngine:
                     termination_reason = TerminationReason.SOURCE_READ_LIMIT
                     break
                 investigation = (
-                    f"{question} independent authoritative primary Source "
-                    "corroboration"
+                    f"{question} 独立、权威的一手来源交叉验证"
+                    if should_use_simplified_chinese(question)
+                    else (
+                        f"{question} independent authoritative primary Source "
+                        "corroboration"
+                    )
                 )
             investigation = _normalize_search_query(
                 investigation, fallback=question
@@ -642,6 +655,7 @@ class DeepAgentResearchPlanner:
                 "web search tool, so return exactly one plain-text, single-line search "
                 "query of at most 400 characters. Do not include explanations, bullets, "
                 "or a list of URLs. Do not make factual claims from model memory."
+                f"{_response_language_instruction(question)}"
             ),
         )
         result = agent.invoke(
@@ -789,6 +803,7 @@ class DeepAgentReportModel:
                 "Summarize the supplied Source content to answer the Research "
                 "Question. Return only concise findings, without a title, Sources "
                 "section, or citation markers. Do not use model memory as Evidence."
+                f"{_response_language_instruction(question)}"
             ),
         )
         result = agent.invoke(
@@ -832,6 +847,7 @@ class DeepAgentReportModel:
                 "gaps, and uncertainty. Cite every sourced factual statement with "
                 "[n]. Put Source disagreements in conflicts; unsupported conclusions "
                 "in gaps; and synthesis limitations in uncertainty."
+                f"{_response_language_instruction(question)}"
             ),
         )
         numbered_evidence = "\n\n".join(

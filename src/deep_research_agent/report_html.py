@@ -3,11 +3,11 @@ from html import escape
 import re
 from urllib.parse import urlsplit
 
+from deep_research_agent.localization import should_use_simplified_chinese
 from deep_research_agent.research import ResearchOutcome, Source, TerminationReason
 
 
 _CITATION_PATTERN = re.compile(r"`([^`\n]+)`|\[([^\]\n]+)\]\((https?://[^\s)]+)\)|\[(\d+)\]")
-_HAN_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _HEADING_PATTERN = re.compile(r"^(#{2,3})\s+(.+?)\s*$")
 _ORDERED_ITEM_PATTERN = re.compile(r"^\d+\.\s+(.+)$")
 _UNORDERED_ITEM_PATTERN = re.compile(r"^[-*]\s+(.+)$")
@@ -16,6 +16,41 @@ _OMITTED_SECTIONS = {
     "outcome",
     "termination reason",
     "sources",
+}
+_ZH_SECTION_TITLES = {
+    "answer": "回答",
+    "conflicting evidence": "冲突证据",
+    "evidence": "证据",
+    "evidence gaps": "证据缺口",
+    "failed operations": "失败操作",
+    "findings": "研究结果",
+    "report": "报告",
+    "report details": "报告详情",
+    "research plan": "研究计划",
+    "sources": "来源",
+    "uncertainty": "不确定性",
+}
+_ZH_TERMINATION_REASONS = {
+    TerminationReason.ANSWERED.value: "研究问题已得到充分回答",
+    TerminationReason.SEARCH_LIMIT.value: "搜索次数已用尽",
+    TerminationReason.SOURCE_READ_LIMIT.value: "来源读取次数已用尽",
+    TerminationReason.ELAPSED_TIME_LIMIT.value: "研究时间已用尽",
+    TerminationReason.RECOVERABLE_FAILURES.value: "研究完成，但出现了可恢复的失败",
+    "Unexpected research execution failure.": "研究执行过程中发生意外错误。",
+}
+_ZH_BODY_TEXT = {
+    "Coverage is limited by failed research operations.": (
+        "研究覆盖范围受到失败操作的限制。"
+    ),
+    "No findings were collected.": "未收集到研究结果。",
+    "No supported answer could be established.": "未能得到有来源支持的答案。",
+    "None": "无",
+    "None identified.": "未发现。",
+    "None.": "无。",
+    "Some Sources could not be searched, accessed, or parsed.": (
+        "部分来源无法搜索、访问或解析。"
+    ),
+    "The available Evidence may be incomplete.": "现有证据可能不完整。",
 }
 
 
@@ -34,28 +69,60 @@ def render_report_html(
     outcome: ResearchOutcome,
     termination_reason: TerminationReason | str,
 ) -> str:
+    simplified_chinese = should_use_simplified_chinese(question)
     sections = _parse_sections(report)
-    source_section = _render_sources(sources)
+    source_section = _render_sources(sources, simplified_chinese=simplified_chinese)
     navigation_items = [
         f'<li><a href="#{escape(section.slug, quote=True)}">'
-        f"{escape(section.title)}</a></li>"
+        f"{escape(_section_title(section.title, simplified_chinese))}</a></li>"
         for section in sections
     ]
-    navigation_items.append('<li><a href="#sources">Sources</a></li>')
-    content = "\n".join(_render_section(section) for section in sections)
-    language = "zh-CN" if _HAN_PATTERN.search(question + report) else "en"
+    sources_title = _section_title("Sources", simplified_chinese)
+    navigation_items.append(
+        f'<li><a href="#sources">{escape(sources_title)}</a></li>'
+    )
+    content = "\n".join(
+        _render_section(section, simplified_chinese=simplified_chinese)
+        for section in sections
+    )
+    language = "zh-Hans" if simplified_chinese else "en"
     outcome_value = outcome.value
-    outcome_label = {
-        ResearchOutcome.COMPLETE: "Complete",
-        ResearchOutcome.PARTIAL: "Partial",
-        ResearchOutcome.FAILED: "Failed",
-    }[outcome]
+    outcome_label = (
+        {
+            ResearchOutcome.COMPLETE: "完整",
+            ResearchOutcome.PARTIAL: "部分完成",
+            ResearchOutcome.FAILED: "失败",
+        }[outcome]
+        if simplified_chinese
+        else {
+            ResearchOutcome.COMPLETE: "Complete",
+            ResearchOutcome.PARTIAL: "Partial",
+            ResearchOutcome.FAILED: "Failed",
+        }[outcome]
+    )
     reason = (
         termination_reason.value
         if isinstance(termination_reason, TerminationReason)
         else str(termination_reason)
     )
-    source_label = "source" if len(sources) == 1 else "sources"
+    if simplified_chinese:
+        reason = _ZH_TERMINATION_REASONS.get(reason, reason)
+        source_count = f"{len(sources)} 个来源"
+        title_suffix = "深度研究"
+        skip_link = "跳到报告正文"
+        report_kicker = "深度研究报告"
+        metadata_label = "报告元数据"
+        navigation_label = "报告章节"
+        contents_label = "目录"
+    else:
+        source_label = "source" if len(sources) == 1 else "sources"
+        source_count = f"{len(sources)} {source_label}"
+        title_suffix = "Deep Research"
+        skip_link = "Skip to report"
+        report_kicker = "Deep Research Report"
+        metadata_label = "Report metadata"
+        navigation_label = "Report sections"
+        contents_label = "Contents"
 
     return f"""<!DOCTYPE html>
 <html lang="{language}">
@@ -63,7 +130,7 @@ def render_report_html(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
-  <title>{escape(question)} | Deep Research</title>
+  <title>{escape(question)} | {title_suffix}</title>
   <style>
     :root {{
       color-scheme: light;
@@ -457,21 +524,21 @@ def render_report_html(
   </style>
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to report</a>
+  <a class="skip-link" href="#main-content">{skip_link}</a>
   <header class="report-header">
     <div class="report-header__inner">
-      <p class="report-kicker">Deep Research Report</p>
+      <p class="report-kicker">{report_kicker}</p>
       <h1>{escape(question)}</h1>
-      <div class="report-meta" aria-label="Report metadata">
+      <div class="report-meta" aria-label="{metadata_label}">
         <span class="status status--{outcome_value}">{outcome_label}</span>
-        <span>{len(sources)} {source_label}</span>
+        <span>{source_count}</span>
         <span>{escape(reason)}</span>
       </div>
     </div>
   </header>
   <div class="report-shell">
-    <nav class="report-nav" aria-label="Report sections">
-      <p class="report-nav__title">Contents</p>
+    <nav class="report-nav" aria-label="{navigation_label}">
+      <p class="report-nav__title">{contents_label}</p>
       <ul role="list">
         {''.join(navigation_items)}
       </ul>
@@ -553,19 +620,71 @@ def _slugify(value: str) -> str:
     return slug or "section"
 
 
-def _render_section(section: _Section) -> str:
+def _section_title(title: str, simplified_chinese: bool) -> str:
+    """Return the localized display title for a report section."""
+    if not simplified_chinese:
+        return title
+    return _ZH_SECTION_TITLES.get(title.casefold(), title)
+
+
+def _localize_body_text(text: str) -> str:
+    """Translate report boilerplate while preserving sourced content."""
+    if text in _ZH_BODY_TEXT:
+        return _ZH_BODY_TEXT[text]
+    if text in _ZH_TERMINATION_REASONS:
+        return _ZH_TERMINATION_REASONS[text]
+
+    research_ended_prefix = "Unverified gap: Research ended with status: "
+    if text.startswith(research_ended_prefix):
+        reason = text.removeprefix(research_ended_prefix).removesuffix(".")
+        localized_reason = _ZH_TERMINATION_REASONS.get(reason, reason)
+        return f"未验证的缺口：研究结束，原因：{localized_reason}。"
+
+    source_read_prefix = "Source read for "
+    if text.startswith(source_read_prefix):
+        target, separator, _ = text.removeprefix(source_read_prefix).partition(": ")
+        return f"读取来源 {target} 时失败。" if separator else "来源读取失败。"
+
+    evidence_extraction_prefix = "Evidence extraction for "
+    if text.startswith(evidence_extraction_prefix):
+        target, separator, _ = text.removeprefix(
+            evidence_extraction_prefix
+        ).partition(": ")
+        if separator:
+            return f"从来源 {target} 提取证据时失败。"
+        return "证据提取失败。"
+
+    if text.startswith("search: "):
+        return "搜索操作失败。"
+    if text.startswith("Research synthesis: "):
+        return "研究综合失败。"
+
+    prefix_translations = (
+        ("Unverified gap: ", "未验证的缺口："),
+        ("Synthesis limitation: ", "综合分析限制："),
+    )
+    for prefix, localized_prefix in prefix_translations:
+        if text.startswith(prefix):
+            remainder = text.removeprefix(prefix)
+            localized_remainder = _ZH_BODY_TEXT.get(remainder, remainder)
+            return f"{localized_prefix}{localized_remainder}"
+    return text
+
+
+def _render_section(section: _Section, *, simplified_chinese: bool) -> str:
     section_class = re.sub(r"[^a-z0-9-]", "", section.slug)
-    body = _render_blocks(section.lines)
+    body = _render_blocks(section.lines, simplified_chinese=simplified_chinese)
+    title = _section_title(section.title, simplified_chinese)
     return (
         f'<section class="report-section report-section--{section_class}" '
         f'id="{escape(section.slug, quote=True)}">\n'
-        f"  <h2>{escape(section.title)}</h2>\n"
+        f"  <h2>{escape(title)}</h2>\n"
         f"  {body}\n"
         "</section>"
     )
 
 
-def _render_blocks(lines: tuple[str, ...]) -> str:
+def _render_blocks(lines: tuple[str, ...], *, simplified_chinese: bool) -> str:
     blocks: list[str] = []
     index = 0
     while index < len(lines):
@@ -593,7 +712,12 @@ def _render_blocks(lines: tuple[str, ...]) -> str:
 
         heading = _HEADING_PATTERN.match(line)
         if heading and len(heading.group(1)) == 3:
-            blocks.append(f"<h3>{_render_inline(heading.group(2))}</h3>")
+            rendered_heading = _render_inline(
+                heading.group(2), simplified_chinese=simplified_chinese
+            )
+            blocks.append(
+                f"<h3>{rendered_heading}</h3>"
+            )
             index += 1
             continue
 
@@ -607,7 +731,17 @@ def _render_blocks(lines: tuple[str, ...]) -> str:
                 match = pattern.match(lines[index].strip())
                 if not match:
                     break
-                items.append(f"<li>{_render_inline(match.group(1))}</li>")
+                rendered_item = _render_inline(
+                    (
+                        _localize_body_text(match.group(1))
+                        if simplified_chinese
+                        else match.group(1)
+                    ),
+                    simplified_chinese=simplified_chinese,
+                )
+                items.append(
+                    f"<li>{rendered_item}</li>"
+                )
                 index += 1
             blocks.append(f"<{tag}>{''.join(items)}</{tag}>")
             continue
@@ -617,8 +751,13 @@ def _render_blocks(lines: tuple[str, ...]) -> str:
             while index < len(lines) and lines[index].strip().startswith("> "):
                 quote_lines.append(lines[index].strip()[2:])
                 index += 1
+            rendered_quote = _render_inline(
+                " ".join(quote_lines), simplified_chinese=simplified_chinese
+            )
             blocks.append(
-                f"<blockquote><p>{_render_inline(' '.join(quote_lines))}</p></blockquote>"
+                "<blockquote><p>"
+                f"{rendered_quote}"
+                "</p></blockquote>"
             )
             continue
 
@@ -636,12 +775,18 @@ def _render_blocks(lines: tuple[str, ...]) -> str:
                 break
             paragraph_lines.append(candidate)
             index += 1
-        blocks.append(f"<p>{_render_inline(' '.join(paragraph_lines))}</p>")
+        paragraph = " ".join(paragraph_lines)
+        if simplified_chinese:
+            paragraph = _localize_body_text(paragraph)
+        rendered_paragraph = _render_inline(
+            paragraph, simplified_chinese=simplified_chinese
+        )
+        blocks.append(f"<p>{rendered_paragraph}</p>")
 
     return "\n  ".join(blocks)
 
 
-def _render_inline(text: str) -> str:
+def _render_inline(text: str, *, simplified_chinese: bool) -> str:
     rendered: list[str] = []
     position = 0
     for match in _CITATION_PATTERN.finditer(text):
@@ -660,40 +805,49 @@ def _render_inline(text: str) -> str:
                 rendered.append(label)
         else:
             citation = match.group(4)
+            citation_label = "来源" if simplified_chinese else "Source"
             rendered.append(
                 f'<a class="citation" href="#source-{citation}" '
-                f'aria-label="Source {citation}">{citation}</a>'
+                f'aria-label="{citation_label} {citation}">{citation}</a>'
             )
         position = match.end()
     rendered.append(escape(text[position:]))
     return "".join(rendered)
 
 
-def _render_sources(sources: tuple[Source, ...]) -> str:
+def _render_sources(
+    sources: tuple[Source, ...], *, simplified_chinese: bool
+) -> str:
+    section_title = _section_title("Sources", simplified_chinese)
     if not sources:
+        empty_message = (
+            "未收集到可用来源。"
+            if simplified_chinese
+            else "No usable sources were collected."
+        )
         return (
             '<section class="report-section report-section--sources" id="sources">\n'
-            "  <h2>Sources</h2>\n"
-            '  <p class="source-empty">No usable sources were collected.</p>\n'
+            f"  <h2>{section_title}</h2>\n"
+            f'  <p class="source-empty">{empty_message}</p>\n'
             "</section>"
         )
 
     items: list[str] = []
     for index, source in enumerate(sources, start=1):
-        title = escape(source.title or source.url)
+        source_title = escape(source.title or source.url)
         domain = escape(urlsplit(source.url).hostname or source.url)
         if _is_safe_web_url(source.url):
             content = (
                 f'<a class="source-link" href="{escape(source.url, quote=True)}" '
                 'target="_blank" rel="noreferrer">'
-                f'<span><span class="source-title">{title}</span>'
+                f'<span><span class="source-title">{source_title}</span>'
                 f'<span class="source-domain">{domain}</span></span>'
                 '<span class="source-arrow" aria-hidden="true">↗</span></a>'
             )
         else:
             content = (
                 '<span class="source-static">'
-                f'<span><span class="source-title">{title}</span>'
+                f'<span><span class="source-title">{source_title}</span>'
                 f'<span class="source-domain">{domain}</span></span>'
                 '<span class="source-arrow" aria-hidden="true"></span></span>'
             )
@@ -701,7 +855,7 @@ def _render_sources(sources: tuple[Source, ...]) -> str:
 
     return (
         '<section class="report-section report-section--sources" id="sources">\n'
-        "  <h2>Sources</h2>\n"
+        f"  <h2>{section_title}</h2>\n"
         f'  <ol class="source-list" role="list">{"".join(items)}</ol>\n'
         "</section>"
     )

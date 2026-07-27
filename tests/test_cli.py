@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from deep_research_agent.cli import main
 from deep_research_agent.research import (
+    DeepAgentResearchPlanner,
     DeepAgentReportModel,
     Evidence,
     ResearchBudget,
@@ -422,6 +423,73 @@ class CliTests(unittest.TestCase):
             )
 
         self.assertEqual(captured_options["reasoning_effort"], "low")
+
+    def test_chinese_question_requests_simplified_chinese_from_every_model_stage(
+        self,
+    ) -> None:
+        """Chinese questions constrain every model stage to Simplified Chinese."""
+        system_prompts: list[str] = []
+        responses = iter(
+            (
+                "网页标准的定义",
+                "网页标准用于确保互操作性。",
+                '{"answer":"网页标准确保互操作性 [1]。",'
+                '"conflicts":[],"gaps":[],"uncertainty":[]}',
+            )
+        )
+
+        class FakeChatOpenAI:
+            def __init__(self, **options: object) -> None:
+                """Accept the same keyword shape as the real chat model."""
+                pass
+
+        class FakeAgent:
+            def __init__(self, response: str) -> None:
+                """Store the response returned by the fake agent."""
+                self.response = response
+
+            def invoke(
+                self, inputs: object
+            ) -> dict[str, list[types.SimpleNamespace]]:
+                """Return one assistant message containing the configured response."""
+                return {"messages": [types.SimpleNamespace(content=self.response)]}
+
+        def create_deep_agent(**options: object) -> FakeAgent:
+            """Capture each model stage's system prompt."""
+            system_prompt = options["system_prompt"]
+            if not isinstance(system_prompt, str):
+                raise TypeError("system_prompt must be text")
+            system_prompts.append(system_prompt)
+            return FakeAgent(next(responses))
+
+        fake_deepagents = types.ModuleType("deepagents")
+        setattr(fake_deepagents, "create_deep_agent", create_deep_agent)
+        fake_langchain_openai = types.ModuleType("langchain_openai")
+        setattr(fake_langchain_openai, "ChatOpenAI", FakeChatOpenAI)
+        planner = DeepAgentResearchPlanner(model_name="test", api_key="test")
+        model = DeepAgentReportModel(model_name="test", api_key="test")
+        source = Source(title="网页标准", url="https://example.com/source")
+
+        with patch.dict(
+            sys.modules,
+            {
+                "deepagents": fake_deepagents,
+                "langchain_openai": fake_langchain_openai,
+            },
+        ):
+            planner.next_investigation("什么是网页标准？", (), ())
+            model.summarize("什么是网页标准？", source, "来源内容")
+            model.synthesize(
+                "什么是网页标准？",
+                (Evidence(summary="网页标准确保互操作性。", source=source),),
+            )
+
+        self.assertEqual(len(system_prompts), 3)
+        for system_prompt in system_prompts:
+            self.assertIn(
+                "Write all natural-language output in Simplified Chinese.",
+                system_prompt,
+            )
 
     def test_deep_agent_rejects_invalid_research_synthesis_schema(self) -> None:
         class FakeChatOpenAI:
