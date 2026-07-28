@@ -71,7 +71,7 @@ test -n "$TAVILY_API_KEY" && echo "TAVILY_API_KEY configured"
 从命令行运行研究问题：
 
 ```bash
-deep-research "W3C是什么？"
+deep-research "介绍一下W3C的历史"
 ```
 
 默认情况下，命令会将四个文件写入 `research-output/`：

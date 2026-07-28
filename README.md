@@ -71,7 +71,7 @@ These `export` commands affect only the current terminal session.
 Run a research question from the command line:
 
 ```bash
-deep-research "What is W3C?"
+deep-research "What is the history of W3C?"
 ```
 
 By default, the command writes four files to `research-output/`:
