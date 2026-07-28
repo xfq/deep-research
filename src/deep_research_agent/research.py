@@ -108,6 +108,24 @@ class ResearchEvent:
     detail: str | None = None
 
 
+ProgressCallback = Callable[[ResearchEvent], None]
+
+
+class _ResearchEventLog(list[ResearchEvent]):
+    """Retain research events while optionally streaming each new event."""
+
+    def __init__(self, on_event: ProgressCallback | None) -> None:
+        """Initialize an event log with an optional streaming callback."""
+        super().__init__()
+        self.on_event = on_event
+
+    def append(self, event: ResearchEvent) -> None:
+        """Store and stream one research event."""
+        super().append(event)
+        if self.on_event is not None:
+            self.on_event(event)
+
+
 class NoUsefulSources(RuntimeError):
     pass
 
@@ -126,6 +144,19 @@ class ResearchResult:
 
 class ResearchEngine(Protocol):
     def research(self, question: str, budget: ResearchBudget) -> ResearchResult: ...
+
+
+class ProgressReportingResearchEngine(Protocol):
+    """Research engine interface that streams events during execution."""
+
+    def research(
+        self,
+        question: str,
+        budget: ResearchBudget,
+        on_event: ProgressCallback | None = None,
+    ) -> ResearchResult:
+        """Run research while streaming each auditable event to the caller."""
+        ...
 
 
 class ReportModel(Protocol):
@@ -196,7 +227,12 @@ class PlannedResearchEngine:
     source_reader: SourceReader
     clock: Callable[[], float] = monotonic
 
-    def research(self, question: str, budget: ResearchBudget) -> ResearchResult:
+    def research(
+        self,
+        question: str,
+        budget: ResearchBudget,
+        on_event: ProgressCallback | None = None,
+    ) -> ResearchResult:
         started_at = self.clock()
         tools = BudgetedResearchTools(
             search_adapter=self.search,
@@ -209,7 +245,8 @@ class PlannedResearchEngine:
         evidence: list[Evidence] = []
         sources: list[Source] = []
         failed_operations: list[FailedOperation] = []
-        events = [ResearchEvent(event="research_started")]
+        events = _ResearchEventLog(on_event)
+        events.append(ResearchEvent(event="research_started"))
         termination_reason = TerminationReason.ANSWERED
 
         while True:
@@ -581,13 +618,41 @@ class SingleSourceResearchEngine:
     source_reader: SourceReader
 
     def research(
-        self, question: str, budget: ResearchBudget = ResearchBudget()
+        self,
+        question: str,
+        budget: ResearchBudget = ResearchBudget(),
+        on_event: ProgressCallback | None = None,
     ) -> ResearchResult:
+        events = _ResearchEventLog(on_event)
+        events.append(ResearchEvent(event="research_started"))
         source = self.search.search(question)
+        events.append(
+            ResearchEvent(
+                event="search_completed",
+                searches_used=1,
+                detail=_diagnostic_url(source.url),
+            )
+        )
         content = self.source_reader.read(source)
+        events.append(
+            ResearchEvent(
+                event="source_read_completed",
+                searches_used=1,
+                source_reads_used=1,
+                detail=_diagnostic_url(source.url),
+            )
+        )
         findings = self.model.summarize(question, source, content).strip()
         if not findings:
             raise RuntimeError("Research model returned no findings")
+        events.append(
+            ResearchEvent(
+                event="research_finished",
+                searches_used=1,
+                source_reads_used=1,
+                detail="complete: Research Question sufficiently answered",
+            )
+        )
         return ResearchResult(
             report=(
                 "# Research Report\n\n"
@@ -596,26 +661,7 @@ class SingleSourceResearchEngine:
                 f"## Sources\n\n[1] {source.url}\n"
             ),
             sources=(source,),
-            events=(
-                ResearchEvent(event="research_started"),
-                ResearchEvent(
-                    event="search_completed",
-                    searches_used=1,
-                    detail=_diagnostic_url(source.url),
-                ),
-                ResearchEvent(
-                    event="source_read_completed",
-                    searches_used=1,
-                    source_reads_used=1,
-                    detail=_diagnostic_url(source.url),
-                ),
-                ResearchEvent(
-                    event="research_finished",
-                    searches_used=1,
-                    source_reads_used=1,
-                    detail="complete: Research Question sufficiently answered",
-                ),
-            ),
+            events=tuple(events),
         )
 
 

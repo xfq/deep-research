@@ -14,6 +14,7 @@ from deep_research_agent.research import (
     PlannedResearchEngine,
     NoUsefulSources,
     ResearchBudget,
+    ResearchEvent,
     ResearchSynthesis,
     Source,
 )
@@ -67,6 +68,26 @@ class CliResearchTestCase(unittest.TestCase):
             )
             self.assertEqual(exit_code, expected_exit_code)
             return (Path(directory) / "report.md").read_text(encoding="utf-8")
+
+
+class ResearchProgressTests(unittest.TestCase):
+    def test_planned_engine_streams_the_events_retained_in_the_result(self) -> None:
+        """Expose auditable research events while the run is still executing."""
+        engine = PlannedResearchEngine(
+            planner=SequencePlanner(["first", "second"]),
+            model=DeterministicModel(),
+            search=RecordingSearch(),
+            source_reader=RecordingReader(),
+        )
+        streamed_events: list[ResearchEvent] = []
+
+        result = engine.research(
+            "Question", ResearchBudget(), on_event=streamed_events.append
+        )
+
+        self.assertEqual(tuple(streamed_events), result.events)
+        self.assertEqual(streamed_events[0].event, "research_started")
+        self.assertEqual(streamed_events[-1].event, "research_finished")
 
 
 class ResearchBudgetTests(CliResearchTestCase):

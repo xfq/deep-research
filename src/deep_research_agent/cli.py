@@ -1,20 +1,131 @@
 import argparse
+from inspect import Parameter, signature
 import json
 import math
 import sys
 import webbrowser
 from dataclasses import asdict
 from pathlib import Path
-from typing import Sequence
+from typing import cast, Sequence, TextIO
 
 from deep_research_agent.research import (
     ConfigurationError,
+    ProgressReportingResearchEngine,
     ResearchBudget,
     ResearchEngine,
+    ResearchEvent,
     ResearchOutcome,
     build_live_research_engine,
 )
 from deep_research_agent.report_html import render_report_html
+
+
+_PROGRESS_STAGES: dict[str, tuple[int, str]] = {
+    "research_started": (0, "Researching: planning"),
+    "investigation_planned": (0, "Researching: planning next search"),
+    "search_started": (0, "Researching: searching"),
+    "search_completed": (0, "Researching: search complete"),
+    "source_read_started": (0, "Researching: reading Source"),
+    "source_read_completed": (0, "Researching: Source read complete"),
+    "evidence_collected": (0, "Researching: Evidence collected"),
+    "synthesis_started": (85, "Researching: synthesizing report"),
+    "synthesis_completed": (92, "Researching: synthesis complete"),
+    "recoverable_failure": (
+        0,
+        "Researching: continuing after a recoverable failure",
+    ),
+    "research_finished": (95, "Preparing output files"),
+}
+
+
+class _ProgressBar:
+    """Render interactive Research Budget and stage progress to a terminal."""
+
+    width = 24
+
+    def __init__(self, budget: ResearchBudget, stream: TextIO) -> None:
+        """Initialize a progress bar for one research run."""
+        self.budget = budget
+        self.stream = stream
+        self.percent = 0
+        self.line_length = 0
+        self.enabled = True
+
+    def start(self) -> None:
+        """Show the initial research stage immediately."""
+        self._render("Researching: planning")
+
+    def update(self, event: ResearchEvent) -> None:
+        """Advance the bar from a streamed research event."""
+        total_operations = self.budget.max_searches + self.budget.max_source_reads
+        completed_operations = min(
+            event.searches_used, self.budget.max_searches
+        ) + min(event.source_reads_used, self.budget.max_source_reads)
+        budget_percent = int(80 * completed_operations / total_operations)
+        stage_floor, label = _PROGRESS_STAGES.get(event.event, (0, "Researching"))
+        self.percent = max(self.percent, budget_percent, stage_floor)
+        self._render(label, event)
+
+    def finish(self) -> None:
+        """Complete the bar after all report files have been written."""
+        self.percent = 100
+        self._render("Report ready")
+        self._end_line()
+
+    def stop(self, label: str) -> None:
+        """End the current progress line without claiming successful completion."""
+        self._render(label)
+        self._end_line()
+
+    def _render(self, label: str, event: ResearchEvent | None = None) -> None:
+        """Draw one terminal-safe progress frame."""
+        if not self.enabled:
+            return
+        filled = self.width * self.percent // 100
+        if filled >= self.width:
+            bar = "=" * self.width
+        else:
+            bar = "=" * filled + ">" + "." * (self.width - filled - 1)
+        counts = ""
+        if event is not None:
+            counts = (
+                f" ({event.searches_used}/{self.budget.max_searches} searches, "
+                f"{event.source_reads_used}/{self.budget.max_source_reads} Sources)"
+            )
+        line = f"[{bar}] {self.percent:3d}% {label}{counts}"
+        padding = " " * max(0, self.line_length - len(line))
+        try:
+            self.stream.write(f"\r{line}{padding}")
+            self.stream.flush()
+        except OSError:
+            self.enabled = False
+            return
+        self.line_length = len(line)
+
+    def _end_line(self) -> None:
+        """Move subsequent CLI output onto a fresh line."""
+        if not self.enabled:
+            return
+        try:
+            self.stream.write("\n")
+            self.stream.flush()
+        except OSError:
+            self.enabled = False
+
+
+def _supports_progress_events(engine: ResearchEngine) -> bool:
+    """Return whether an engine accepts the optional ``on_event`` callback."""
+    try:
+        parameters = signature(engine.research).parameters
+    except (TypeError, ValueError):
+        return False
+    on_event = parameters.get("on_event")
+    if on_event is not None and on_event.kind != Parameter.POSITIONAL_ONLY:
+        return True
+    return any(
+        parameter.kind == Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
 
 
 def positive_int(value: str) -> int:
@@ -100,16 +211,25 @@ def main(
     except ConfigurationError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    budget = ResearchBudget(
+        max_searches=args.max_searches,
+        max_source_reads=args.max_source_reads,
+        max_elapsed_seconds=args.max_elapsed_seconds,
+    )
+    progress = _ProgressBar(budget, sys.stderr) if sys.stderr.isatty() else None
+    if progress is not None:
+        progress.start()
     try:
-        result = engine.research(
-            args.question,
-            ResearchBudget(
-                max_searches=args.max_searches,
-                max_source_reads=args.max_source_reads,
-                max_elapsed_seconds=args.max_elapsed_seconds,
-            ),
-        )
+        if progress is None or not _supports_progress_events(engine):
+            result = engine.research(args.question, budget)
+        else:
+            progress_engine = cast(ProgressReportingResearchEngine, engine)
+            result = progress_engine.research(
+                args.question, budget, on_event=progress.update
+            )
     except Exception as error:
+        if progress is not None:
+            progress.stop("Research failed")
         print(
             f"error: research execution failed ({type(error).__name__})",
             file=sys.stderr,
@@ -173,12 +293,16 @@ def main(
             },
         )
     except (OSError, TypeError) as error:
+        if progress is not None:
+            progress.stop("Could not write output files")
         print(
             f"error: could not write research outputs ({type(error).__name__})",
             file=sys.stderr,
         )
         return 1
 
+    if progress is not None:
+        progress.finish()
     report_path = args.output_dir / "report.html"
     _maybe_open_report(args, report_path)
     if result.outcome == ResearchOutcome.COMPLETE:

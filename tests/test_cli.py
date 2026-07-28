@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from typing import Callable
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -17,6 +18,7 @@ from deep_research_agent.research import (
     DeepAgentReportModel,
     Evidence,
     ResearchBudget,
+    ResearchEvent,
     ResearchOutcome,
     ResearchResult,
     SingleSourceResearchEngine,
@@ -26,6 +28,14 @@ from deep_research_agent.research import (
     TerminationReason,
     build_live_research_engine,
 )
+
+
+class TtyStringIO(StringIO):
+    """Expose an in-memory text stream as an interactive terminal."""
+
+    def isatty(self) -> bool:
+        """Report that the stream supports interactive terminal output."""
+        return True
 
 
 class DeterministicModel:
@@ -53,6 +63,74 @@ class DeterministicSourceReader:
 
 
 class CliTests(unittest.TestCase):
+    def test_interactive_run_supports_engine_without_progress_callback(self) -> None:
+        class BasicEngine:
+            """Implement the original two-argument ResearchEngine interface."""
+
+            def research(
+                self, question: str, budget: ResearchBudget
+            ) -> ResearchResult:
+                """Return a static report without streaming research events."""
+                return ResearchResult(report="Report\n", sources=())
+
+        progress_output = TtyStringIO()
+        with tempfile.TemporaryDirectory() as directory, redirect_stderr(
+            progress_output
+        ):
+            exit_code = main(
+                ["Question", "--output-dir", directory, "--no-open"],
+                research_engine=BasicEngine(),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Researching", progress_output.getvalue())
+        self.assertIn("Report ready", progress_output.getvalue())
+
+    def test_interactive_run_displays_research_progress(self) -> None:
+        class ProgressEngine:
+            """Emit deterministic progress events for the public CLI seam."""
+
+            def research(
+                self,
+                question: str,
+                budget: ResearchBudget,
+                on_event: Callable[[ResearchEvent], None] | None = None,
+            ) -> ResearchResult:
+                """Return a static report after streaming representative events."""
+                if on_event is not None:
+                    for event in (
+                        ResearchEvent(event="research_started"),
+                        ResearchEvent(event="search_completed", searches_used=1),
+                        ResearchEvent(
+                            event="source_read_completed",
+                            searches_used=1,
+                            source_reads_used=1,
+                        ),
+                        ResearchEvent(
+                            event="research_finished",
+                            searches_used=1,
+                            source_reads_used=1,
+                        ),
+                    ):
+                        on_event(event)
+                return ResearchResult(report="Report\n", sources=())
+
+        progress_output = TtyStringIO()
+        with tempfile.TemporaryDirectory() as directory, redirect_stderr(
+            progress_output
+        ):
+            exit_code = main(
+                ["Question", "--output-dir", directory, "--no-open"],
+                research_engine=ProgressEngine(),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("Researching", progress_output.getvalue())
+        self.assertIn("1/3 searches", progress_output.getvalue())
+        self.assertIn("1/3 Sources", progress_output.getvalue())
+        self.assertIn("Report ready", progress_output.getvalue())
+        self.assertIn("100%", progress_output.getvalue())
+
     def test_unhandled_research_failure_has_stable_safe_cli_outcome(self) -> None:
         secret = "secret-runtime-value"
 
