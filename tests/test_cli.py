@@ -176,7 +176,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         self.assertIn("could not write research outputs", stderr.getvalue())
 
-    def test_cli_help_documents_budget_outputs_and_provider_configuration(self) -> None:
+    def test_cli_help_presents_research_depth_before_advanced_limits(self) -> None:
         stdout = StringIO()
 
         with redirect_stdout(stdout), self.assertRaises(SystemExit) as raised:
@@ -185,8 +185,11 @@ class CliTests(unittest.TestCase):
         help_text = stdout.getvalue()
         normalized_help = " ".join(help_text.split())
         self.assertEqual(raised.exception.code, 0)
-        self.assertIn("default: 3", normalized_help)
-        self.assertIn("default: 120", normalized_help)
+        self.assertIn("--depth {quick,standard,deep}", normalized_help)
+        self.assertIn("default: standard", normalized_help)
+        self.assertIn("Research stops early", normalized_help)
+        self.assertIn("advanced research limits", help_text)
+        self.assertIn("Most users do not need these options", normalized_help)
         self.assertIn("report.html", help_text)
         self.assertIn("diagnostics.jsonl", help_text)
         self.assertIn("OPENAI_API_KEY", help_text)
@@ -265,6 +268,69 @@ class CliTests(unittest.TestCase):
         self.assertEqual(
             engine.budget,
             ResearchBudget(max_searches=4, max_source_reads=5, max_elapsed_seconds=90),
+        )
+
+    def test_research_depth_selects_a_complete_research_budget(self) -> None:
+        class RecordingEngine:
+            budget = None
+
+            def research(self, question: str, budget: ResearchBudget) -> ResearchResult:
+                self.budget = budget
+                return ResearchResult(report="Report\n", sources=())
+
+        scenarios = (
+            ("quick", ResearchBudget(2, 2, 60)),
+            ("standard", ResearchBudget(3, 3, 120)),
+            ("deep", ResearchBudget(8, 8, 300)),
+        )
+        for depth, expected_budget in scenarios:
+            with self.subTest(depth=depth), tempfile.TemporaryDirectory() as directory:
+                engine = RecordingEngine()
+
+                exit_code = main(
+                    [
+                        "What is LangChain?",
+                        "--depth",
+                        depth,
+                        "--output-dir",
+                        directory,
+                        "--no-open",
+                    ],
+                    research_engine=engine,
+                )
+
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(engine.budget, expected_budget)
+
+    def test_advanced_limit_overrides_only_one_depth_limit(self) -> None:
+        class RecordingEngine:
+            budget = None
+
+            def research(self, question: str, budget: ResearchBudget) -> ResearchResult:
+                self.budget = budget
+                return ResearchResult(report="Report\n", sources=())
+
+        with tempfile.TemporaryDirectory() as directory:
+            engine = RecordingEngine()
+
+            exit_code = main(
+                [
+                    "What is LangChain?",
+                    "--depth",
+                    "deep",
+                    "--max-searches",
+                    "4",
+                    "--output-dir",
+                    directory,
+                    "--no-open",
+                ],
+                research_engine=engine,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            engine.budget,
+            ResearchBudget(max_searches=4, max_source_reads=8, max_elapsed_seconds=300),
         )
 
     def test_invalid_research_budget_is_rejected_before_research_starts(self) -> None:

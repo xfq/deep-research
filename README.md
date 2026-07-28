@@ -91,8 +91,20 @@ Choose a different output directory with `--output-dir`:
 deep-research "What is W3C?" --output-dir ./output/w3c
 ```
 
-Each run uses a conservative Research Budget: at most 3 searches, 3 Source reads,
-and 120 elapsed seconds. Override those limits when needed:
+Choose a Research Depth:
+
+- `quick`: direct factual questions; up to 2 searches, 2 Source reads, and 60 seconds
+- `standard`: most research questions; up to 3 searches, 3 Source reads, and 120 seconds (default)
+- `deep`: broad, comparative, or disputed topics; up to 8 searches, 8 Source reads, and 300 seconds
+
+The agent stops early when the Research Question is sufficiently answered, so a
+preset is a ceiling rather than a target. Select a preset with `--depth`:
+
+```bash
+deep-research "Compare LangChain and LangGraph" --depth deep
+```
+
+Advanced users can override individual hard limits when a preset does not fit:
 
 ```bash
 deep-research "Compare LangChain and LangGraph" \
@@ -136,9 +148,10 @@ statements must carry valid Source citations.
 | `OPENAI_BASE_URL` | No | OpenAI default | HTTP or HTTPS provider URL |
 | `OPENAI_REASONING_EFFORT` | No | `none` | `none`, `minimal`, `low`, `medium`, or `high` |
 | `DEEP_RESEARCH_MODEL` | No | `gpt-5.6-sol` | Must be non-blank |
-| `--max-searches` | No | `3` | Positive integer |
-| `--max-source-reads` | No | `3` | Positive integer |
-| `--max-elapsed-seconds` | No | `120` | Positive finite number |
+| `--depth` | No | `standard` | `quick`, `standard`, or `deep` |
+| `--max-searches` | No | Selected by `--depth` | Positive integer |
+| `--max-source-reads` | No | Selected by `--depth` | Positive integer |
+| `--max-elapsed-seconds` | No | Selected by `--depth` | Positive finite number |
 
 `diagnostics.jsonl` records major stages, external operation counts, safe failure
 messages, and the final termination reason. It does not include Source body text, and

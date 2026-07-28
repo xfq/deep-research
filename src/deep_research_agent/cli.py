@@ -1,4 +1,5 @@
 import argparse
+from enum import StrEnum
 from inspect import Parameter, signature
 import json
 import math
@@ -18,6 +19,29 @@ from deep_research_agent.research import (
     build_live_research_engine,
 )
 from deep_research_agent.report_html import render_report_html
+
+
+class ResearchDepth(StrEnum):
+    """User-facing presets for research effort and hard limits."""
+
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+_RESEARCH_DEPTH_BUDGETS: dict[ResearchDepth, ResearchBudget] = {
+    ResearchDepth.QUICK: ResearchBudget(
+        max_searches=2,
+        max_source_reads=2,
+        max_elapsed_seconds=60,
+    ),
+    ResearchDepth.STANDARD: ResearchBudget(),
+    ResearchDepth.DEEP: ResearchBudget(
+        max_searches=8,
+        max_source_reads=8,
+        max_elapsed_seconds=300,
+    ),
+}
 
 
 _PROGRESS_STAGES: dict[str, tuple[int, str]] = {
@@ -142,6 +166,20 @@ def positive_float(value: str) -> float:
     return parsed
 
 
+def _resolve_research_budget(args: argparse.Namespace) -> ResearchBudget:
+    """Resolve a Research Depth preset plus optional advanced overrides."""
+    preset = _RESEARCH_DEPTH_BUDGETS[args.depth]
+    return ResearchBudget(
+        max_searches=getattr(args, "max_searches", preset.max_searches),
+        max_source_reads=getattr(
+            args, "max_source_reads", preset.max_source_reads
+        ),
+        max_elapsed_seconds=getattr(
+            args, "max_elapsed_seconds", preset.max_elapsed_seconds
+        ),
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="deep-research",
@@ -165,20 +203,43 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("research-output"),
         help="Directory for report.html, report.md, sources.json, and diagnostics.jsonl.",
     )
-    parser.add_argument(
-        "--max-searches", type=positive_int, default=3, help="Maximum web searches."
+    research_effort = parser.add_argument_group("research effort")
+    research_effort.add_argument(
+        "--depth",
+        type=ResearchDepth,
+        choices=tuple(ResearchDepth),
+        default=ResearchDepth.STANDARD,
+        help=(
+            "Research effort preset: quick for direct questions, standard for "
+            "most research, or deep for broad and disputed topics. Research "
+            "stops early when the evidence is sufficient."
+        ),
     )
-    parser.add_argument(
+    advanced_limits = parser.add_argument_group(
+        "advanced research limits",
+        "Override individual limits selected by --depth. Most users do not need "
+        "these options.",
+    )
+    advanced_limits.add_argument(
+        "--max-searches",
+        type=positive_int,
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help="Hard cap on web searches.",
+    )
+    advanced_limits.add_argument(
         "--max-source-reads",
         type=positive_int,
-        default=3,
-        help="Maximum public Source reads.",
+        default=argparse.SUPPRESS,
+        metavar="N",
+        help="Hard cap on public Source reads.",
     )
-    parser.add_argument(
+    advanced_limits.add_argument(
         "--max-elapsed-seconds",
         type=positive_float,
-        default=120,
-        help="Maximum elapsed research time in seconds.",
+        default=argparse.SUPPRESS,
+        metavar="SECONDS",
+        help="Hard cap on elapsed research time.",
     )
     parser.add_argument(
         "--no-open",
@@ -211,11 +272,7 @@ def main(
     except ConfigurationError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    budget = ResearchBudget(
-        max_searches=args.max_searches,
-        max_source_reads=args.max_source_reads,
-        max_elapsed_seconds=args.max_elapsed_seconds,
-    )
+    budget = _resolve_research_budget(args)
     progress = _ProgressBar(budget, sys.stderr) if sys.stderr.isatty() else None
     if progress is not None:
         progress.start()

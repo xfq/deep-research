@@ -89,7 +89,19 @@ deep-research "介绍一下W3C的历史"
 deep-research "W3C是什么？" --output-dir ./output/w3c
 ```
 
-每次运行使用保守的研究预算：最多3次搜索、3次Source读取和120秒耗时。需要时可覆盖这些限制：
+可以选择研究深度：
+
+- `quick`：适合直接的事实性问题；最多2次搜索、2次Source读取和60秒
+- `standard`：适合大多数研究问题；最多3次搜索、3次Source读取和120秒（默认）
+- `deep`：适合宽泛、比较性或存在争议的主题；最多8次搜索、8次Source读取和300秒
+
+当研究问题已得到充分回答时，智能体会提前停止，因此这些预设是上限，而不是必须用完的目标。通过 `--depth` 选择预设：
+
+```bash
+deep-research "对比一下LangChain和LangGraph" --depth deep
+```
+
+如果预设不适用，高级用户仍可覆盖单项硬限制：
 
 ```bash
 deep-research "对比一下LangChain和LangGraph" \
@@ -117,9 +129,10 @@ deep-research "对比一下LangChain和LangGraph" \
 | `OPENAI_BASE_URL` | 否 | OpenAI 默认 | HTTP 或 HTTPS 提供商 URL |
 | `OPENAI_REASONING_EFFORT` | 否 | `none` | `none`、`minimal`、`low`、`medium` 或 `high` |
 | `DEEP_RESEARCH_MODEL` | 否 | `gpt-5.6-sol` | 必须非空 |
-| `--max-searches` | 否 | `3` | 正整数 |
-| `--max-source-reads` | 否 | `3` | 正整数 |
-| `--max-elapsed-seconds` | 否 | `120` | 正有限数 |
+| `--depth` | 否 | `standard` | `quick`、`standard` 或 `deep` |
+| `--max-searches` | 否 | 由 `--depth` 决定 | 正整数 |
+| `--max-source-reads` | 否 | 由 `--depth` 决定 | 正整数 |
+| `--max-elapsed-seconds` | 否 | 由 `--depth` 决定 | 正有限数 |
 
 `diagnostics.jsonl` 记录主要阶段、外部操作计数、安全的失败消息以及最终终止原因。它不包含 Source 正文文本，且配置的提供商凭据在可恢复的失败消息中会被脱敏处理。
 

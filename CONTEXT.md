@@ -27,3 +27,7 @@ _Avoid_: Response, summary
 **Research Budget**:
 The configured limits on searches, Source reads, and elapsed time for one research run.
 _Avoid_: Token budget, quota
+
+**Research Depth**:
+The user-facing `quick`, `standard`, or `deep` preset that selects a Research Budget while allowing the agent to stop early when the Research Question is sufficiently answered.
+_Avoid_: Search count, iteration count
