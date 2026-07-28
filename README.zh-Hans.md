@@ -92,7 +92,7 @@ deep-research "W3C是什么？" --output-dir ./output/w3c
 每次运行使用保守的研究预算：最多3次搜索、3次Source读取和120秒耗时。需要时可覆盖这些限制：
 
 ```bash
-deep-research "Compare LangChain and LangGraph" \
+deep-research "对比一下LangChain和LangGraph" \
   --max-searches 5 \
   --max-source-reads 5 \
   --max-elapsed-seconds 180
