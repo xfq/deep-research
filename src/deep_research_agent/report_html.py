@@ -17,6 +17,7 @@ _OMITTED_SECTIONS = {
     "termination reason",
     "sources",
 }
+_PRIMARY_ANSWER_SECTIONS = {"answer", "findings"}
 _ZH_SECTION_TITLES = {
     "answer": "回答",
     "conflicting evidence": "冲突证据",
@@ -71,20 +72,66 @@ def render_report_html(
 ) -> str:
     simplified_chinese = should_use_simplified_chinese(question)
     sections = _parse_sections(report)
+    primary_sections = tuple(
+        section
+        for section in sections
+        if section.title.casefold() in _PRIMARY_ANSWER_SECTIONS
+    )
+    secondary_sections = tuple(
+        section
+        for section in sections
+        if section.title.casefold() not in _PRIMARY_ANSWER_SECTIONS
+    )
     source_section = _render_sources(sources, simplified_chinese=simplified_chinese)
-    navigation_items = [
+    primary_navigation_items = [
+        f'<li class="report-nav__item--primary">'
+        f'<a href="#{escape(section.slug, quote=True)}">'
+        f"{escape(_section_title(section.title, simplified_chinese))}</a></li>"
+        for section in primary_sections
+    ]
+    secondary_navigation_items = [
         f'<li><a href="#{escape(section.slug, quote=True)}">'
         f"{escape(_section_title(section.title, simplified_chinese))}</a></li>"
-        for section in sections
+        for section in secondary_sections
     ]
     sources_title = _section_title("Sources", simplified_chinese)
-    navigation_items.append(
-        f'<li><a href="#sources">{escape(sources_title)}</a></li>'
+    source_navigation_item = (
+        '<li class="report-nav__item--primary">'
+        f'<a href="#sources">{escape(sources_title)}</a></li>'
     )
-    content = "\n".join(
-        _render_section(section, simplified_chinese=simplified_chinese)
-        for section in sections
-    )
+    if primary_sections:
+        navigation_items = [
+            *primary_navigation_items,
+            source_navigation_item,
+            *secondary_navigation_items,
+        ]
+        content_parts = [
+            *(
+                _render_section(section, simplified_chinese=simplified_chinese)
+                for section in primary_sections
+            ),
+            source_section,
+        ]
+        if secondary_sections:
+            secondary_content = "\n".join(
+                _render_section(section, simplified_chinese=simplified_chinese)
+                for section in secondary_sections
+            )
+            content_parts.append(
+                f'<div class="report-secondary">\n{secondary_content}\n</div>'
+            )
+        content = "\n".join(content_parts)
+    else:
+        navigation_items = [*secondary_navigation_items, source_navigation_item]
+        content = "\n".join(
+            [
+                *(
+                    _render_section(section, simplified_chinese=simplified_chinese)
+                    for section in secondary_sections
+                ),
+                source_section,
+            ]
+        )
     language = "zh-Hans" if simplified_chinese else "en"
     outcome_value = outcome.value
     outcome_label = (
@@ -210,13 +257,13 @@ def render_report_html(
     .report-header__inner {{
       width: min(100% - 2.5rem, 76rem);
       margin-inline: auto;
-      padding-block: clamp(3.5rem, 8vw, 7.5rem) clamp(2.25rem, 5vw, 4rem);
+      padding-block: clamp(2.75rem, 6vw, 5.5rem) clamp(2rem, 4vw, 3rem);
     }}
 
     .report-kicker {{
-      margin: 0 0 1.25rem;
-      color: var(--accent);
-      font: 720 0.82rem/1.2 var(--sans);
+      margin: 0 0 0.9rem;
+      color: var(--muted);
+      font: 720 0.78rem/1.2 var(--sans);
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }}
@@ -241,9 +288,14 @@ def render_report_html(
       flex-wrap: wrap;
       gap: 0.7rem 1.5rem;
       align-items: center;
-      margin-top: clamp(2rem, 5vw, 3.5rem);
+      margin-top: clamp(1.5rem, 3vw, 2.25rem);
       color: var(--muted);
-      font: 560 0.88rem/1.45 var(--sans);
+      font: 720 0.82rem/1.45 var(--sans);
+    }}
+
+    .report-meta__reason {{
+      color: var(--muted);
+      font-weight: 720;
     }}
 
     .status {{
@@ -269,11 +321,11 @@ def render_report_html(
 
     .report-shell {{
       display: grid;
-      grid-template-columns: minmax(11rem, 14rem) minmax(0, 48rem);
-      gap: clamp(2.5rem, 7vw, 8rem);
+      grid-template-columns: minmax(9rem, 11rem) minmax(0, 48rem);
+      gap: clamp(2.5rem, 6vw, 6.5rem);
       width: min(100% - 2.5rem, 76rem);
       margin-inline: auto;
-      padding-block: clamp(2.5rem, 6vw, 6rem) 8rem;
+      padding-block: clamp(2.5rem, 5vw, 4.5rem) 8rem;
     }}
 
     .report-nav {{
@@ -304,10 +356,16 @@ def render_report_html(
       display: block;
       padding: 0.42rem 0;
       color: var(--muted);
-      font-size: 0.88rem;
-      font-weight: 600;
+      font-size: 0.82rem;
+      font-weight: 720;
       line-height: 1.35;
       text-decoration: none;
+    }}
+
+    .report-nav__item--primary a {{
+      color: var(--ink);
+      font-size: 0.88rem;
+      font-weight: 720;
     }}
 
     .report-nav a:hover {{ color: var(--accent); }}
@@ -318,10 +376,6 @@ def render_report_html(
       padding-block: 0 3.5rem;
       content-visibility: auto;
       contain-intrinsic-size: auto 32rem;
-    }}
-
-    .report-section + .report-section {{
-      padding-top: 3.5rem;
     }}
 
     .report-section h2 {{
@@ -345,9 +399,58 @@ def render_report_html(
 
     .report-section p {{ margin: 0 0 1.25rem; }}
 
-    .report-section--answer > p:first-of-type {{
-      font-size: clamp(1.2rem, 1.5vw, 1.38rem);
-      line-height: 1.72;
+    .report-section--answer,
+    .report-section--findings {{
+      margin-bottom: 0;
+      padding: clamp(1.6rem, 4vw, 2.4rem);
+      border: 1px solid var(--line);
+      border-radius: 0.8rem;
+      background: var(--paper-raised);
+    }}
+
+    .report-section--answer h2,
+    .report-section--findings h2 {{
+      margin-bottom: 1.1rem;
+      font-size: clamp(1.65rem, 2.4vw, 2.3rem);
+      line-height: 1.08;
+    }}
+
+    .report-section--answer > p:first-of-type,
+    .report-section--findings > p:first-of-type {{
+      font-size: clamp(1.15rem, 1.5vw, 1.35rem);
+      line-height: 1.62;
+    }}
+
+    .report-section--answer > :last-child,
+    .report-section--findings > :last-child {{ margin-bottom: 0; }}
+
+    .report-section--sources {{
+      padding-block: clamp(3.75rem, 7vw, 5.5rem) clamp(4rem, 7vw, 5.5rem);
+    }}
+
+    .report-section--sources h2 {{
+      margin-bottom: 1.75rem;
+      font-size: clamp(1.65rem, 2.4vw, 2.3rem);
+    }}
+
+    .report-secondary {{
+      padding-top: clamp(2.5rem, 5vw, 4rem);
+      border-top: 1px solid var(--line);
+      color: color-mix(in oklch, var(--ink), var(--muted) 24%);
+      font-size: 0.96em;
+    }}
+
+    .report-secondary .report-section {{ padding-bottom: 2.75rem; }}
+
+    .report-secondary .report-section + .report-section {{
+      padding-top: 2.75rem;
+    }}
+
+    .report-secondary .report-section h2 {{
+      margin-bottom: 1.15rem;
+      color: var(--muted);
+      font-size: clamp(1.65rem, 2.4vw, 2.3rem);
+      line-height: 1.08;
     }}
 
     .report-section--conflicting-evidence,
@@ -359,6 +462,7 @@ def render_report_html(
       border: 1px solid color-mix(in oklch, var(--partial), transparent 58%);
       border-radius: 0.8rem;
       background: var(--partial-soft);
+      color: var(--ink);
     }}
 
     ol, ul {{ padding-inline-start: 1.45rem; }}
@@ -424,10 +528,10 @@ def render_report_html(
     .source-link,
     .source-static {{
       display: grid;
-      grid-template-columns: 2.4rem minmax(0, 1fr) auto;
-      gap: 0.8rem;
+      grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+      gap: 1rem;
       align-items: center;
-      padding: 1.15rem 0;
+      padding: 1.35rem 0;
       color: var(--ink);
       font-family: var(--sans);
       text-decoration: none;
@@ -436,12 +540,22 @@ def render_report_html(
     .source-link::before,
     .source-static::before {{
       content: counter(source, decimal-leading-zero);
+      display: grid;
+      width: 2rem;
+      height: 2rem;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--accent-soft);
       color: var(--accent);
       font-size: 0.76rem;
       font-weight: 760;
     }}
 
-    .source-title {{ font-weight: 680; line-height: 1.35; }}
+    .source-title {{
+      font-size: clamp(1rem, 0.97rem + 0.16vw, 1.1rem);
+      font-weight: 720;
+      line-height: 1.35;
+    }}
 
     .source-domain {{
       display: block;
@@ -504,6 +618,13 @@ def render_report_html(
       }}
 
       .report-content {{ padding-top: 3rem; }}
+
+      .report-section--answer,
+      .report-section--findings {{ padding: 1.4rem; }}
+
+      .report-section--sources {{
+        padding-block: 3.5rem 4rem;
+      }}
     }}
 
     @media print {{
@@ -531,8 +652,8 @@ def render_report_html(
       <h1>{escape(question)}</h1>
       <div class="report-meta" aria-label="{metadata_label}">
         <span class="status status--{outcome_value}">{outcome_label}</span>
-        <span>{source_count}</span>
-        <span>{escape(reason)}</span>
+        <span class="report-meta__source-count">{source_count}</span>
+        <span class="report-meta__reason">{escape(reason)}</span>
       </div>
     </div>
   </header>
@@ -546,7 +667,6 @@ def render_report_html(
     <main id="main-content" tabindex="-1">
       <article class="report-content">
         {content}
-        {source_section}
       </article>
     </main>
   </div>

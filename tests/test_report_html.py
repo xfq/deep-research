@@ -40,8 +40,33 @@ class ReportHtmlTests(unittest.TestCase):
         self.assertIn('id="source-1"', html)
         self.assertIn("World Wide Web Consortium", html)
         self.assertIn('target="_blank" rel="noreferrer"', html)
+        self.assertLess(html.index('id="answer"'), html.index('id="sources"'))
+        self.assertLess(html.index('id="sources"'), html.index('id="evidence"'))
+        self.assertIn('<div class="report-secondary">', html)
+        self.assertEqual(html.count('id="sources"'), 1)
+        self.assertEqual(html.count("World Wide Web Consortium"), 1)
         self.assertNotIn("<h2>Research Question</h2>", html)
         self.assertNotIn("<h2>Outcome</h2>", html)
+
+    def test_treats_findings_as_the_primary_answer(self) -> None:
+        """Single-source findings receive the same emphasis as an answer."""
+        html = render_report_html(
+            "# Research Report\n\n"
+            "## Findings\n\nA concise supported finding [1].\n\n"
+            "## Research Plan\n\n- Verify the primary source.\n",
+            question="What did the source establish?",
+            sources=(Source(title="Primary Source", url="https://example.com/"),),
+            outcome=ResearchOutcome.COMPLETE,
+            termination_reason=TerminationReason.ANSWERED,
+        )
+
+        self.assertIn(
+            '<li class="report-nav__item--primary"><a href="#findings">Findings</a>',
+            html,
+        )
+        self.assertLess(html.index('id="findings"'), html.index('id="sources"'))
+        self.assertLess(html.index('id="sources"'), html.index('id="research-plan"'))
+        self.assertIn('<div class="report-secondary">', html)
 
     def test_escapes_untrusted_report_content_and_detects_chinese_language(self) -> None:
         html = render_report_html(
