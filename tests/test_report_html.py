@@ -68,6 +68,22 @@ class ReportHtmlTests(unittest.TestCase):
         self.assertLess(html.index('id="sources"'), html.index('id="research-plan"'))
         self.assertIn('<div class="report-secondary">', html)
 
+    def test_keeps_primary_answer_body_at_one_consistent_size(self) -> None:
+        """Answer paragraphs should share the report body size without a lead bump."""
+        html = render_report_html(
+            "# Research Report\n\n"
+            "## Answer\n\nFirst paragraph.\n\nSecond paragraph.\n\n"
+            "- Supporting point.\n",
+            question="What is the answer?",
+            sources=(),
+            outcome=ResearchOutcome.COMPLETE,
+            termination_reason=TerminationReason.ANSWERED,
+        )
+
+        self.assertEqual(html.count("font-size: var(--report-body-size);"), 2)
+        self.assertNotIn(".report-section--answer > p:first-of-type", html)
+        self.assertNotIn(".report-section--findings > p:first-of-type", html)
+
     def test_escapes_untrusted_report_content_and_detects_chinese_language(self) -> None:
         html = render_report_html(
             "# Research Report\n\n"

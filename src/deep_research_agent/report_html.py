@@ -197,6 +197,7 @@ def render_report_html(
       --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --serif: ui-serif, "Iowan Old Style", "Palatino Linotype",
         "Noto Serif CJK SC", "Songti SC", serif;
+      --report-body-size: clamp(1rem, 0.96rem + 0.18vw, 1.12rem);
     }}
 
     * {{ box-sizing: border-box; }}
@@ -211,7 +212,7 @@ def render_report_html(
       background: var(--paper);
       color: var(--ink);
       font-family: var(--serif);
-      font-size: clamp(1rem, 0.96rem + 0.18vw, 1.12rem);
+      font-size: var(--report-body-size);
       line-height: 1.78;
       text-rendering: optimizeLegibility;
     }}
@@ -406,6 +407,7 @@ def render_report_html(
       border: 1px solid var(--line);
       border-radius: 0.8rem;
       background: var(--paper-raised);
+      font-size: var(--report-body-size);
     }}
 
     .report-section--answer h2,
@@ -413,12 +415,6 @@ def render_report_html(
       margin-bottom: 1.1rem;
       font-size: clamp(1.65rem, 2.4vw, 2.3rem);
       line-height: 1.08;
-    }}
-
-    .report-section--answer > p:first-of-type,
-    .report-section--findings > p:first-of-type {{
-      font-size: clamp(1.15rem, 1.5vw, 1.35rem);
-      line-height: 1.62;
     }}
 
     .report-section--answer > :last-child,
