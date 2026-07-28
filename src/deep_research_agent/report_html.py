@@ -7,7 +7,15 @@ from deep_research_agent.localization import should_use_simplified_chinese
 from deep_research_agent.research import ResearchOutcome, Source, TerminationReason
 
 
-_CITATION_PATTERN = re.compile(r"`([^`\n]+)`|\[([^\]\n]+)\]\((https?://[^\s)]+)\)|\[(\d+)\]")
+_INLINE_PATTERN = re.compile(
+    r"`(?P<code>[^`\n]+)`"
+    r"|\[(?P<link_label>[^\]\n]+)\]\((?P<link_url>https?://[^\s)]+)\)"
+    r"|\*\*(?P<strong_star>(?=\S).+?(?<=\S))\*\*"
+    r"|(?<![\w_])__(?P<strong_underscore>(?=\S).+?(?<=\S))__(?![\w_])"
+    r"|(?<!\*)\*(?!\*)(?P<em_star>(?=\S).+?(?<=\S))\*(?!\*)"
+    r"|(?<![\w_])_(?!_)(?P<em_underscore>(?=\S).+?(?<=\S))_(?![\w_])"
+    r"|\[(?P<citation>\d+)\]"
+)
 _HEADING_PATTERN = re.compile(r"^(#{2,3})\s+(.+?)\s*$")
 _ORDERED_ITEM_PATTERN = re.compile(r"^\d+\.\s+(.+)$")
 _UNORDERED_ITEM_PATTERN = re.compile(r"^[-*]\s+(.+)$")
@@ -903,24 +911,49 @@ def _render_blocks(lines: tuple[str, ...], *, simplified_chinese: bool) -> str:
 
 
 def _render_inline(text: str, *, simplified_chinese: bool) -> str:
+    """Render supported inline Markdown while escaping all untrusted text."""
     rendered: list[str] = []
     position = 0
-    for match in _CITATION_PATTERN.finditer(text):
+    for match in _INLINE_PATTERN.finditer(text):
         rendered.append(escape(text[position : match.start()]))
-        if match.group(1) is not None:
-            rendered.append(f"<code>{escape(match.group(1))}</code>")
-        elif match.group(2) is not None and match.group(3) is not None:
-            label = escape(match.group(2))
-            url = match.group(3)
+        if (code := match.group("code")) is not None:
+            rendered.append(f"<code>{escape(code)}</code>")
+        elif (
+            (label := match.group("link_label")) is not None
+            and (url := match.group("link_url")) is not None
+        ):
+            rendered_label = _render_inline(
+                label, simplified_chinese=simplified_chinese
+            )
             if _is_safe_web_url(url):
                 rendered.append(
                     f'<a href="{escape(url, quote=True)}" target="_blank" '
-                    f'rel="noreferrer">{label}</a>'
+                    f'rel="noreferrer">{rendered_label}</a>'
                 )
             else:
-                rendered.append(label)
+                rendered.append(rendered_label)
+        elif (
+            (strong := match.group("strong_star")) is not None
+            or (strong := match.group("strong_underscore")) is not None
+        ):
+            rendered.append(
+                "<strong>"
+                f"{_render_inline(strong, simplified_chinese=simplified_chinese)}"
+                "</strong>"
+            )
+        elif (
+            (emphasis := match.group("em_star")) is not None
+            or (emphasis := match.group("em_underscore")) is not None
+        ):
+            rendered.append(
+                "<em>"
+                f"{_render_inline(emphasis, simplified_chinese=simplified_chinese)}"
+                "</em>"
+            )
         else:
-            citation = match.group(4)
+            citation = match.group("citation")
+            if citation is None:
+                raise AssertionError("inline Markdown match has no supported group")
             citation_label = "来源" if simplified_chinese else "Source"
             rendered.append(
                 f'<a class="citation" href="#source-{citation}" '

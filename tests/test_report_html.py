@@ -84,6 +84,34 @@ class ReportHtmlTests(unittest.TestCase):
         self.assertNotIn(".report-section--answer > p:first-of-type", html)
         self.assertNotIn(".report-section--findings > p:first-of-type", html)
 
+    def test_renders_inline_markdown_in_the_answer(self) -> None:
+        """Answer emphasis should render as HTML without allowing raw HTML."""
+        html = render_report_html(
+            "# Research Report\n\n"
+            "## Answer\n\n"
+            "**Important [1]** and *qualified* with `code`, "
+            "[a link](https://example.com/), and **<script>alert(1)</script>**.\n",
+            question="What is the answer?",
+            sources=(Source(title="Example", url="https://example.com/"),),
+            outcome=ResearchOutcome.COMPLETE,
+            termination_reason=TerminationReason.ANSWERED,
+        )
+
+        self.assertIn(
+            '<strong>Important <a class="citation" href="#source-1"', html
+        )
+        self.assertIn("<em>qualified</em>", html)
+        self.assertIn("<code>code</code>", html)
+        self.assertIn(
+            '<a href="https://example.com/" target="_blank" rel="noreferrer">'
+            "a link</a>",
+            html,
+        )
+        self.assertIn(
+            "<strong>&lt;script&gt;alert(1)&lt;/script&gt;</strong>", html
+        )
+        self.assertNotIn("<script>alert(1)</script>", html)
+
     def test_escapes_untrusted_report_content_and_detects_chinese_language(self) -> None:
         html = render_report_html(
             "# Research Report\n\n"
